@@ -1,4 +1,4 @@
-"""Shared LLM client with OpenAI / Anthropic / mock fallback."""
+"""Shared LLM client with OpenAI / Kimi(Moonshot) / Anthropic / mock fallback."""
 from __future__ import annotations
 
 import json
@@ -9,7 +9,10 @@ from backend.config import (
     ANTHROPIC_API_KEY,
     LLM_MODEL,
     LLM_PROVIDER,
+    MOONSHOT_API_KEY,
+    MOONSHOT_BASE_URL,
     OPENAI_API_KEY,
+    OPENAI_BASE_URL,
     use_mock_llm,
 )
 
@@ -30,25 +33,64 @@ async def call_llm_json(system: str, user: str, mock_payload: dict[str, Any]) ->
     try:
         if LLM_PROVIDER == "anthropic":
             return await _call_anthropic(system, user)
-        return await _call_openai(system, user)
+        if LLM_PROVIDER in {"kimi", "moonshot"}:
+            return await _call_openai_compatible(
+                api_key=MOONSHOT_API_KEY,
+                base_url=MOONSHOT_BASE_URL,
+                system=system,
+                user=user,
+                prefer_json_mode=False,  # Moonshot 部分模型对 json_object 支持不稳定
+            )
+        return await _call_openai_compatible(
+            api_key=OPENAI_API_KEY,
+            base_url=OPENAI_BASE_URL or None,
+            system=system,
+            user=user,
+            prefer_json_mode=True,
+        )
     except Exception as exc:  # noqa: BLE001 — MVP resilience
         print(f"[LLM] Error, using mock: {exc}")
         return mock_payload
 
 
-async def _call_openai(system: str, user: str) -> dict[str, Any]:
+async def _call_openai_compatible(
+    *,
+    api_key: str,
+    base_url: str | None,
+    system: str,
+    user: str,
+    prefer_json_mode: bool,
+) -> dict[str, Any]:
     from openai import AsyncOpenAI
 
-    client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-    response = await client.chat.completions.create(
-        model=LLM_MODEL,
-        temperature=0.7,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-    )
+    kwargs: dict[str, Any] = {"api_key": api_key}
+    if base_url:
+        kwargs["base_url"] = base_url
+    client = AsyncOpenAI(**kwargs)
+
+    messages = [
+        {
+            "role": "system",
+            "content": system + "\n\n请只输出合法 JSON 对象，不要 Markdown 代码块或额外说明。",
+        },
+        {"role": "user", "content": user},
+    ]
+
+    create_kwargs: dict[str, Any] = {
+        "model": LLM_MODEL,
+        "temperature": 0.7,
+        "messages": messages,
+    }
+    if prefer_json_mode:
+        create_kwargs["response_format"] = {"type": "json_object"}
+
+    try:
+        response = await client.chat.completions.create(**create_kwargs)
+    except Exception:
+        # 部分兼容端点不支持 response_format，降级重试
+        create_kwargs.pop("response_format", None)
+        response = await client.chat.completions.create(**create_kwargs)
+
     content = response.choices[0].message.content or "{}"
     return _extract_json(content)
 

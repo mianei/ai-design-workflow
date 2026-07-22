@@ -12,7 +12,12 @@ load_dotenv(ROOT_DIR / ".env")
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{ROOT_DIR / 'database' / 'workflow.db'}")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()  # openai | anthropic | mock
+MOONSHOT_API_KEY = os.getenv("MOONSHOT_API_KEY", "") or os.getenv("KIMI_API_KEY", "")
+# China: https://api.moonshot.cn/v1  | International: https://api.moonshot.ai/v1
+MOONSHOT_BASE_URL = os.getenv("MOONSHOT_BASE_URL", "https://api.moonshot.cn/v1")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "")  # optional custom OpenAI-compatible endpoint
+
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()  # openai | anthropic | kimi | moonshot | mock
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 CORS_ORIGINS = [
     origin.strip()
@@ -24,6 +29,8 @@ CORS_ORIGINS = [
 def use_mock_llm() -> bool:
     """Fallback to deterministic mock outputs when no API key is configured."""
     if LLM_PROVIDER == "mock":
+        return True
+    if LLM_PROVIDER in {"kimi", "moonshot"} and not MOONSHOT_API_KEY:
         return True
     if LLM_PROVIDER == "openai" and not OPENAI_API_KEY:
         return True
