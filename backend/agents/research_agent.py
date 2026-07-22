@@ -5,6 +5,8 @@ from typing import Any
 
 from backend.agents.base import BaseAgent
 from backend.agents.llm import call_llm_json
+from backend.agents.validate import require_list, require_object
+from backend.config import use_mock_llm
 
 
 class ResearchAgent(BaseAgent):
@@ -18,15 +20,29 @@ class ResearchAgent(BaseAgent):
             "You are a consumer market research analyst. Based on the structured "
             "product requirement, produce JSON with: market_trends (string[]), "
             "competitors ([{name, strength, weakness}]), user_pain_points (string[]), "
-            "opportunities (string[]). Write in Chinese. Be specific and actionable."
+            "opportunities (string[]). Write in Chinese. Be specific and actionable. "
+            "Use real or realistic competitor names for the category — never placeholder brands."
         )
         user = f"Requirement JSON:\n{req}\n\nReturn JSON only."
         result = await call_llm_json(system, user, mock)
+        data = require_object(
+            result,
+            mock,
+            use_mock=use_mock_llm(),
+            required=["market_trends", "competitors", "user_pain_points", "opportunities"],
+        )
+        trends = require_list(data["market_trends"], field="market_trends", min_items=1)
+        competitors = require_list(data["competitors"], field="competitors", min_items=1)
+        pains = require_list(data["user_pain_points"], field="user_pain_points", min_items=1)
+        opps = require_list(data["opportunities"], field="opportunities", min_items=1)
+        for i, c in enumerate(competitors):
+            if not isinstance(c, dict) or not c.get("name"):
+                raise ValueError(f"competitors[{i}] must include name")
         return {
-            "market_trends": result.get("market_trends", mock["market_trends"]),
-            "competitors": result.get("competitors", mock["competitors"]),
-            "user_pain_points": result.get("user_pain_points", mock["user_pain_points"]),
-            "opportunities": result.get("opportunities", mock["opportunities"]),
+            "market_trends": trends,
+            "competitors": competitors,
+            "user_pain_points": pains,
+            "opportunities": opps,
         }
 
 

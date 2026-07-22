@@ -5,6 +5,8 @@ from typing import Any
 
 from backend.agents.base import BaseAgent
 from backend.agents.llm import call_llm_json
+from backend.agents.validate import require_list, require_object
+from backend.config import use_mock_llm
 
 
 class InsightAgent(BaseAgent):
@@ -22,13 +24,19 @@ class InsightAgent(BaseAgent):
         )
         user = f"Requirement:\n{req}\n\nResearch:\n{research}\n\nReturn persona JSON only."
         result = await call_llm_json(system, user, mock)
+        data = require_object(
+            result,
+            mock,
+            use_mock=use_mock_llm(),
+            required=["name", "age", "scenario", "needs", "frustrations", "buying_reason"],
+        )
         return {
-            "name": result.get("name", mock["name"]),
-            "age": result.get("age", mock["age"]),
-            "scenario": result.get("scenario", mock["scenario"]),
-            "needs": result.get("needs", mock["needs"]),
-            "frustrations": result.get("frustrations", mock["frustrations"]),
-            "buying_reason": result.get("buying_reason", mock["buying_reason"]),
+            "name": data["name"],
+            "age": str(data["age"]),
+            "scenario": data["scenario"],
+            "needs": require_list(data["needs"], field="needs", min_items=1),
+            "frustrations": require_list(data["frustrations"], field="frustrations", min_items=1),
+            "buying_reason": data["buying_reason"],
         }
 
 

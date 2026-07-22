@@ -58,23 +58,21 @@ Human Decision Layer：收藏、评分、改关键词、合并方向、选择并
 
 ## 快速启动
 
-### 方式 A：纯 HTML（推荐，无需 Node）
+### 正式入口：纯 HTML（推荐）
 
 ```bash
-# 在仓库根目录
 py -m pip install -r backend/requirements.txt
-copy .env.example .env   # Windows
+copy .env.example .env
 py -m uvicorn backend.main:app --reload --port 8000
 ```
 
-打开：**http://127.0.0.1:8000/app**  
-单文件界面：`static/index.html`（也可双击打开；需后端已启动）
+打开：**http://127.0.0.1:8000/app**
 
-### 方式 B：React 前端
+> React 前端（`frontend/`）仍可作开发对照，但以 `static/index.html` 为正式 UI。
+
+### 可选：React 前端
 
 ```bash
-# 终端 1：后端同上
-# 终端 2：
 cd frontend
 npm install
 npm run dev

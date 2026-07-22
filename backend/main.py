@@ -28,7 +28,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS + ["null", "*"],
+    allow_origins=CORS_ORIGINS if CORS_ORIGINS else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,7 +55,7 @@ def on_startup() -> None:
     try:
         stuck = db.query(Project).filter(Project.status == "running").all()
         for project in stuck:
-            project.status = "draft"
+            project.status = "failed"
             for step in db.query(AgentStep).filter(
                 AgentStep.project_id == project.id, AgentStep.status == "running"
             ):

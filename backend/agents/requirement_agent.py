@@ -1,11 +1,12 @@
 """Requirement Understanding Agent — structures fuzzy product briefs."""
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from backend.agents.base import BaseAgent
 from backend.agents.llm import call_llm_json
+from backend.agents.validate import require_object
+from backend.config import use_mock_llm
 
 
 class RequirementAgent(BaseAgent):
@@ -24,13 +25,26 @@ class RequirementAgent(BaseAgent):
         )
         user = f"Raw product requirement:\n{raw}\n\nReturn JSON only."
         result = await call_llm_json(system, user, mock)
+        data = require_object(
+            result,
+            mock,
+            use_mock=use_mock_llm(),
+            required=[
+                "product_category",
+                "target_users",
+                "business_goal",
+                "price_range",
+                "brand_attributes",
+                "design_constraints",
+            ],
+        )
         return {
-            "product_category": result.get("product_category", mock["product_category"]),
-            "target_users": result.get("target_users", mock["target_users"]),
-            "business_goal": result.get("business_goal", mock["business_goal"]),
-            "price_range": result.get("price_range", mock["price_range"]),
-            "brand_attributes": result.get("brand_attributes", mock["brand_attributes"]),
-            "design_constraints": result.get("design_constraints", mock["design_constraints"]),
+            "product_category": data["product_category"],
+            "target_users": data["target_users"],
+            "business_goal": data["business_goal"],
+            "price_range": data["price_range"],
+            "brand_attributes": data["brand_attributes"],
+            "design_constraints": data["design_constraints"],
         }
 
 
@@ -44,9 +58,4 @@ def _mock_requirement(raw: str) -> dict[str, Any]:
         "price_range": "300-500元",
         "brand_attributes": "年轻、科技、高品质",
         "design_constraints": "便携、易清洁、续航可靠、避免运动水壶廉价感",
-        "source_excerpt": raw[:400],
     }
-
-
-# Keep json import available for debugging dumps
-_ = json

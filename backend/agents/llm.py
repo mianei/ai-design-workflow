@@ -5,10 +5,13 @@ import json
 import re
 from typing import Any
 
+import httpx
+
 from backend.config import (
     ANTHROPIC_API_KEY,
     LLM_MODEL,
     LLM_PROVIDER,
+    LLM_TIMEOUT_SECONDS,
     MOONSHOT_API_KEY,
     MOONSHOT_BASE_URL,
     OPENAI_API_KEY,
@@ -22,11 +25,14 @@ def _extract_json(text: str) -> Any:
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
+    # Recover leading/trailing prose around a JSON object
+    if not text.startswith("{") and "{" in text and "}" in text:
+        text = text[text.find("{") : text.rfind("}") + 1]
     return json.loads(text)
 
 
 async def call_llm_json(system: str, user: str, mock_payload: dict[str, Any]) -> dict[str, Any]:
-    """Call configured LLM and parse JSON. Falls back to mock_payload."""
+    """Call configured LLM and parse JSON. Uses mock only when mock mode is enabled."""
     if use_mock_llm():
         print("[LLM] mock_mode enabled — using built-in demo payload")
         return mock_payload
@@ -40,7 +46,7 @@ async def call_llm_json(system: str, user: str, mock_payload: dict[str, Any]) ->
                 base_url=MOONSHOT_BASE_URL,
                 system=system,
                 user=user,
-                prefer_json_mode=False,  # Moonshot 部分模型对 json_object 支持不稳定
+                prefer_json_mode=False,
             )
         return await _call_openai_compatible(
             api_key=OPENAI_API_KEY,
@@ -49,8 +55,7 @@ async def call_llm_json(system: str, user: str, mock_payload: dict[str, Any]) ->
             user=user,
             prefer_json_mode=True,
         )
-    except Exception as exc:  # noqa: BLE001 — MVP resilience
-        # 真实模型模式下不再静默吞错成演示数据，避免用户误以为已接上模型
+    except Exception as exc:  # noqa: BLE001
         raise RuntimeError(f"LLM call failed ({LLM_PROVIDER}/{LLM_MODEL}): {exc}") from exc
 
 
@@ -64,7 +69,8 @@ async def _call_openai_compatible(
 ) -> dict[str, Any]:
     from openai import AsyncOpenAI
 
-    kwargs: dict[str, Any] = {"api_key": api_key}
+    timeout = httpx.Timeout(LLM_TIMEOUT_SECONDS, connect=20.0)
+    kwargs: dict[str, Any] = {"api_key": api_key, "timeout": timeout}
     if base_url:
         kwargs["base_url"] = base_url
     client = AsyncOpenAI(**kwargs)
@@ -79,18 +85,26 @@ async def _call_openai_compatible(
 
     create_kwargs: dict[str, Any] = {
         "model": LLM_MODEL,
-        "temperature": 1 if LLM_PROVIDER in {"kimi", "moonshot"} or LLM_MODEL.startswith("kimi") else 0.7,
         "messages": messages,
     }
+    # kimi-k3 only allows temperature=1; omit for kimi family to use server default when needed
+    if LLM_PROVIDER in {"kimi", "moonshot"} or LLM_MODEL.startswith("kimi"):
+        create_kwargs["temperature"] = 1
+    else:
+        create_kwargs["temperature"] = 0.7
+
     if prefer_json_mode:
         create_kwargs["response_format"] = {"type": "json_object"}
 
     try:
         response = await client.chat.completions.create(**create_kwargs)
-    except Exception:
-        # 部分兼容端点不支持 response_format，降级重试
-        create_kwargs.pop("response_format", None)
-        response = await client.chat.completions.create(**create_kwargs)
+    except Exception as first_exc:
+        msg = str(first_exc).lower()
+        if prefer_json_mode and ("response_format" in msg or "json_object" in msg or "invalid" in msg):
+            create_kwargs.pop("response_format", None)
+            response = await client.chat.completions.create(**create_kwargs)
+        else:
+            raise
 
     content = response.choices[0].message.content or "{}"
     return _extract_json(content)
@@ -99,7 +113,7 @@ async def _call_openai_compatible(
 async def _call_anthropic(system: str, user: str) -> dict[str, Any]:
     from anthropic import AsyncAnthropic
 
-    client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY, timeout=LLM_TIMEOUT_SECONDS)
     model = LLM_MODEL if LLM_MODEL.startswith("claude") else "claude-3-5-sonnet-20241022"
     response = await client.messages.create(
         model=model,

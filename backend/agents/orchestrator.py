@@ -1,9 +1,10 @@
 """Agent orchestration — sequential workflow with step tracking."""
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 
 from sqlalchemy.orm import Session
 
@@ -13,6 +14,7 @@ from backend.agents.insight_agent import InsightAgent
 from backend.agents.requirement_agent import RequirementAgent
 from backend.agents.research_agent import ResearchAgent
 from backend.agents.sketch_agent import SketchAgent
+from backend.config import PIPELINE_AGENT_TIMEOUT_SECONDS
 from backend.database.models import AgentStep, Concept, DecisionEvent, Project
 
 PIPELINE = [
@@ -73,16 +75,81 @@ def _log_decision(
     db.commit()
 
 
+def _preserve_concept_meta(db: Session, project_id: int) -> dict[str, dict[str, Any]]:
+    """Keep human decisions (favorite/rating/keywords) across concept regeneration."""
+    meta: dict[str, dict[str, Any]] = {}
+    for row in db.query(Concept).filter(Concept.project_id == project_id).all():
+        meta[row.concept_key] = {
+            "is_favorite": row.is_favorite,
+            "rating": row.rating,
+            "edited_keywords_json": row.edited_keywords_json,
+            "merged_from": row.merged_from,
+        }
+    return meta
+
+
+def _replace_concepts(
+    db: Session,
+    project: Project,
+    concepts: list[dict[str, Any]],
+    *,
+    preserve_meta: bool = True,
+) -> None:
+    meta = _preserve_concept_meta(db, project.id) if preserve_meta else {}
+    db.query(Concept).filter(Concept.project_id == project.id).delete()
+    for c in concepts:
+        key = c["id"]
+        prev = meta.get(key, {})
+        body = dict(c)
+        if prev.get("edited_keywords_json"):
+            try:
+                edited = json.loads(prev["edited_keywords_json"])
+                if edited:
+                    body["design_keywords"] = edited
+            except json.JSONDecodeError:
+                pass
+        row = Concept(
+            project_id=project.id,
+            concept_key=key,
+            concept_json=json.dumps(body, ensure_ascii=False),
+            is_favorite=prev.get("is_favorite") or 0,
+            rating=prev.get("rating"),
+            edited_keywords_json=prev.get("edited_keywords_json"),
+            merged_from=prev.get("merged_from"),
+        )
+        db.add(row)
+    project.concepts_json = json.dumps({"concepts": concepts}, ensure_ascii=False)
+
+
+def invalidate_brief_after_research(db: Session, project: Project) -> None:
+    """Clear outdated brief when research/concepts are regenerated."""
+    if project.brief_json or project.selected_concept_id or project.status in {
+        "brief_ready",
+        "decided",
+    }:
+        _log_decision(
+            db,
+            project.id,
+            "brief_invalidated",
+            "ai",
+            {
+                "reason": "research_rerun",
+                "previous_selected_concept_id": project.selected_concept_id,
+            },
+        )
+    project.brief_json = None
+    project.selected_concept_id = None
+
+
 async def run_research_pipeline(
     db: Session,
     project: Project,
-    should_continue: Any | None = None,
+    should_continue: Callable[[], bool] | None = None,
 ) -> Project:
-    """Run agents 1-4: requirement → research → insight → concepts."""
-    from collections.abc import Callable
-
+    """Run agents 1-5: requirement → research → insight → concepts → sketches."""
     cont: Callable[[], bool] = should_continue or (lambda: True)
 
+    invalidate_brief_after_research(db, project)
     project.status = "running"
     db.commit()
 
@@ -98,17 +165,23 @@ async def run_research_pipeline(
 
         _upsert_step(db, project.id, agent.name, "running", f"{agent.name} running...")
         try:
-            # Sketch agent needs concepts from previous step
             if agent.name == "sketch":
                 context["concepts"] = {"concepts": context.get("concepts_list") or []}
-            output = await agent.run(context)
+            output = await asyncio.wait_for(
+                agent.run(context),
+                timeout=PIPELINE_AGENT_TIMEOUT_SECONDS,
+            )
         except Exception as exc:  # noqa: BLE001
             if not cont():
                 return project
-            _upsert_step(db, project.id, agent.name, "failed", str(exc))
-            project.status = "draft"
+            message = str(exc)
+            if isinstance(exc, asyncio.TimeoutError):
+                message = f"Agent timed out after {PIPELINE_AGENT_TIMEOUT_SECONDS:.0f}s"
+            _upsert_step(db, project.id, agent.name, "failed", message)
+            project.status = "failed"
+            project.updated_at = datetime.utcnow()
             db.commit()
-            raise
+            raise RuntimeError(message) from exc
 
         if not cont():
             print(f"[pipeline] project {project.id} superseded — discard {agent.name} result")
@@ -136,17 +209,7 @@ async def run_research_pipeline(
             context["concepts_list"] = output.get("concepts", [])
             project.concepts_json = json.dumps(output, ensure_ascii=False)
         elif agent.name == "sketch":
-            concepts = output.get("concepts", [])
-            project.concepts_json = json.dumps({"concepts": concepts}, ensure_ascii=False)
-            db.query(Concept).filter(Concept.project_id == project.id).delete()
-            for c in concepts:
-                db.add(
-                    Concept(
-                        project_id=project.id,
-                        concept_key=c["id"],
-                        concept_json=json.dumps(c, ensure_ascii=False),
-                    )
-                )
+            _replace_concepts(db, project, output.get("concepts", []), preserve_meta=True)
 
         project.updated_at = datetime.utcnow()
         db.commit()
@@ -188,11 +251,21 @@ async def generate_brief_for_concept(
 
     agent = BriefAgent()
     _upsert_step(db, project.id, agent.name, "running", "Generating design brief...")
+    project.status = "running"
+    db.commit()
     try:
-        brief = await agent.run(context)
+        brief = await asyncio.wait_for(
+            agent.run(context),
+            timeout=PIPELINE_AGENT_TIMEOUT_SECONDS,
+        )
     except Exception as exc:  # noqa: BLE001
-        _upsert_step(db, project.id, agent.name, "failed", str(exc))
-        raise
+        message = str(exc)
+        if isinstance(exc, asyncio.TimeoutError):
+            message = f"Brief timed out after {PIPELINE_AGENT_TIMEOUT_SECONDS:.0f}s"
+        _upsert_step(db, project.id, agent.name, "failed", message)
+        project.status = "concepts_ready"
+        db.commit()
+        raise RuntimeError(message) from exc
 
     _upsert_step(db, project.id, agent.name, "completed", agent.display_message, brief)
     project.brief_json = json.dumps(brief, ensure_ascii=False)

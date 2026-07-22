@@ -5,9 +5,16 @@ import json
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload
 
-from backend.agents.orchestrator import generate_brief_for_concept, run_research_pipeline
+from backend.agents.orchestrator import (
+    generate_brief_for_concept,
+    invalidate_brief_after_research,
+    run_research_pipeline,
+    _log_decision,
+    _replace_concepts,
+    _upsert_step,
+)
 from backend.database.db import SessionLocal, get_db
 from backend.database.models import Concept, DecisionEvent, Project
 from backend.schemas import (
@@ -30,9 +37,9 @@ def _get_project(db: Session, project_id: int) -> Project:
     project = (
         db.query(Project)
         .options(
-            joinedload(Project.agent_steps),
-            joinedload(Project.concepts),
-            joinedload(Project.decisions),
+            selectinload(Project.agent_steps),
+            selectinload(Project.concepts),
+            selectinload(Project.decisions),
         )
         .filter(Project.id == project_id)
         .first()
@@ -69,7 +76,25 @@ async def _background_pipeline(project_id: int, generation: int) -> None:
                 return
             project = db.query(Project).filter(Project.id == project_id).first()
             if project and project.status == "running":
-                project.status = "draft"
+                project.status = "failed"
+                db.commit()
+    finally:
+        db.close()
+
+
+async def _background_brief(project_id: int, concept_key: str) -> None:
+    db = SessionLocal()
+    try:
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            return
+        try:
+            await generate_brief_for_concept(db, project, concept_key)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[brief] project {project_id} failed: {exc}")
+            project = db.query(Project).filter(Project.id == project_id).first()
+            if project and project.status == "running":
+                project.status = "concepts_ready"
                 db.commit()
     finally:
         db.close()
@@ -150,6 +175,7 @@ async def rerun_pipeline(
         step.message = "Waiting to restart"
         step.started_at = None
         step.completed_at = None
+    invalidate_brief_after_research(db, project)
     _mark_project_running(db, project)
     gen = _next_generation(project_id)
     background.add_task(_background_pipeline, project.id, gen)
@@ -159,7 +185,6 @@ async def rerun_pipeline(
 @router.post("/projects/{project_id}/sketches")
 async def generate_sketches(project_id: int, db: Session = Depends(get_db)):
     """Generate / refresh preliminary sketches for existing concepts."""
-    from backend.agents.orchestrator import _log_decision, _upsert_step
     from backend.agents.sketch_agent import SketchAgent
 
     project = _get_project(db, project_id)
@@ -187,16 +212,7 @@ async def generate_sketches(project_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     sketched = output.get("concepts") or []
-    project.concepts_json = json.dumps({"concepts": sketched}, ensure_ascii=False)
-    db.query(Concept).filter(Concept.project_id == project.id).delete()
-    for c in sketched:
-        db.add(
-            Concept(
-                project_id=project.id,
-                concept_key=c["id"],
-                concept_json=json.dumps(c, ensure_ascii=False),
-            )
-        )
+    _replace_concepts(db, project, sketched, preserve_meta=True)
     _upsert_step(db, project.id, agent.name, "completed", agent.display_message, output)
     _log_decision(
         db,
@@ -206,10 +222,8 @@ async def generate_sketches(project_id: int, db: Session = Depends(get_db)):
         {"agent": "sketch", "message": agent.display_message},
     )
     project.updated_at = datetime.utcnow()
-    if project.status in {"concepts_ready", "brief_ready", "decided", "draft"}:
-        # keep status, but ensure concepts_ready if we only had draft after fail
-        if project.status == "draft":
-            project.status = "concepts_ready"
+    if project.status in {"draft", "failed"}:
+        project.status = "concepts_ready"
     db.commit()
     return serialize_project(_get_project(db, project.id))
 
@@ -336,15 +350,28 @@ def merge_concepts(
 async def generate_brief(
     project_id: int,
     payload: SelectConceptRequest,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     project = _get_project(db, project_id)
     if project.status == "running":
-        raise HTTPException(status_code=409, detail="Research pipeline still running")
-    try:
-        project = await generate_brief_for_concept(db, project, payload.concept_key)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail="Another job is still running")
+
+    concept = (
+        db.query(Concept)
+        .filter(Concept.project_id == project_id, Concept.concept_key == payload.concept_key)
+        .first()
+    )
+    if not concept:
+        raise HTTPException(status_code=404, detail=f"Concept not found: {payload.concept_key}")
+
+    project.selected_concept_id = payload.concept_key
+    project.status = "running"
+    project.updated_at = datetime.utcnow()
+    _upsert_step(db, project.id, "brief", "running", "Generating design brief...")
+    db.commit()
+
+    background.add_task(_background_brief, project.id, payload.concept_key)
     return serialize_project(_get_project(db, project.id))
 
 

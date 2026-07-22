@@ -5,6 +5,8 @@ from typing import Any
 
 from backend.agents.base import BaseAgent
 from backend.agents.llm import call_llm_json
+from backend.agents.validate import require_list, require_object
+from backend.config import use_mock_llm
 
 
 class BriefAgent(BaseAgent):
@@ -24,14 +26,28 @@ class BriefAgent(BaseAgent):
         )
         user = f"Requirement:\n{req}\n\nSelected concept:\n{concept}\n\nPersona:\n{persona}\n\nReturn brief JSON."
         result = await call_llm_json(system, user, mock)
+        data = require_object(
+            result,
+            mock,
+            use_mock=use_mock_llm(),
+            required=[
+                "design_goal",
+                "target_user",
+                "design_keywords",
+                "CMF_direction",
+                "form_language",
+                "must_have_features",
+                "avoid_features",
+            ],
+        )
         return {
-            "design_goal": result.get("design_goal", mock["design_goal"]),
-            "target_user": result.get("target_user", mock["target_user"]),
-            "design_keywords": result.get("design_keywords", mock["design_keywords"]),
-            "CMF_direction": result.get("CMF_direction", mock["CMF_direction"]),
-            "form_language": result.get("form_language", mock["form_language"]),
-            "must_have_features": result.get("must_have_features", mock["must_have_features"]),
-            "avoid_features": result.get("avoid_features", mock["avoid_features"]),
+            "design_goal": data["design_goal"],
+            "target_user": data["target_user"],
+            "design_keywords": require_list(data["design_keywords"], field="design_keywords", min_items=1),
+            "CMF_direction": data["CMF_direction"],
+            "form_language": data["form_language"],
+            "must_have_features": data["must_have_features"],
+            "avoid_features": data["avoid_features"],
         }
 
 

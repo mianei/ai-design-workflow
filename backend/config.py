@@ -9,16 +9,20 @@ from dotenv import load_dotenv
 ROOT_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT_DIR / ".env")
 
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{ROOT_DIR / 'database' / 'workflow.db'}")
+_db_file = (ROOT_DIR / "database" / "workflow.db").as_posix()
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{_db_file}")
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 MOONSHOT_API_KEY = os.getenv("MOONSHOT_API_KEY", "") or os.getenv("KIMI_API_KEY", "")
-# China: https://api.moonshot.cn/v1  | International: https://api.moonshot.ai/v1
 MOONSHOT_BASE_URL = os.getenv("MOONSHOT_BASE_URL", "https://api.moonshot.cn/v1")
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "")  # optional custom OpenAI-compatible endpoint
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "")
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()  # openai | anthropic | kimi | moonshot | mock
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "120"))
+PIPELINE_AGENT_TIMEOUT_SECONDS = float(os.getenv("PIPELINE_AGENT_TIMEOUT_SECONDS", "300"))
+
 CORS_ORIGINS = [
     origin.strip()
     for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")

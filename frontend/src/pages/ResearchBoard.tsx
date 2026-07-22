@@ -26,6 +26,15 @@ export function ResearchBoard({
             {!requirement && project.status === 'running' ? (
               <p className="muted">Agents 正在分析需求与市场…</p>
             ) : null}
+            {project.status === 'failed' ? (
+              <p style={{ color: 'var(--danger)' }}>
+                流水线失败：
+                {project.agent_steps
+                  .filter((s) => s.status === 'failed')
+                  .map((s) => s.message)
+                  .join('；') || '请重新运行'}
+              </p>
+            ) : null}
 
             {requirement ? (
               <div style={{ marginBottom: 22 }}>

@@ -63,7 +63,8 @@ function ProjectLoader() {
   }, [load]);
 
   useEffect(() => {
-    if (!project || project.status !== 'running') return;
+    if (!project || (project.status !== 'running' && project.status !== 'failed')) return;
+    if (project.status === 'failed') return;
     const timer = window.setInterval(() => {
       void load();
     }, 1500);

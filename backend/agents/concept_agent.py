@@ -5,6 +5,8 @@ from typing import Any
 
 from backend.agents.base import BaseAgent
 from backend.agents.llm import call_llm_json
+from backend.agents.validate import normalize_concepts
+from backend.config import use_mock_llm
 
 
 class ConceptAgent(BaseAgent):
@@ -29,25 +31,12 @@ class ConceptAgent(BaseAgent):
             "Return JSON with 3 concepts."
         )
         result = await call_llm_json(system, user, mock)
-        concepts = result.get("concepts", mock["concepts"])
-        # Normalize ids
-        normalized = []
-        default_ids = ["concept_a", "concept_b", "concept_c"]
-        for i, c in enumerate(concepts[:3]):
-            cid = c.get("id") or default_ids[i]
-            normalized.append(
-                {
-                    "id": cid,
-                    "concept_name": c.get("concept_name", f"Concept {chr(65 + i)}"),
-                    "target_user": c.get("target_user", persona.get("name", "")),
-                    "design_keywords": c.get("design_keywords", []),
-                    "product_features": c.get("product_features", []),
-                    "visual_direction": c.get("visual_direction", ""),
-                    "business_value": c.get("business_value", ""),
-                }
-            )
-        while len(normalized) < 3:
-            normalized.append(mock["concepts"][len(normalized)])
+        normalized = normalize_concepts(
+            result,
+            use_mock=use_mock_llm(),
+            mock_concepts=mock["concepts"],
+            persona_name=persona.get("name", ""),
+        )
         return {"concepts": normalized}
 
 
