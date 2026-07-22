@@ -285,7 +285,7 @@
     function viewDashboard() {
       return `
         ${topbar()}
-        ${state.health ? `<div class="banner">API ${esc(API)} · mock_mode=${state.health.mock_mode} · provider=${esc(state.health.llm_provider)}</div>` : ''}
+        ${state.health ? `<div class="banner">API ${esc(API)} · mock_mode=${state.health.mock_mode} · provider=${esc(state.health.llm_provider)} · model=${esc(state.health.llm_model || '')}</div>` : ''}
         ${state.error ? `<div class="banner err">${esc(state.error)}</div>` : ''}
         <div class="grid-2">
           <section class="panel">

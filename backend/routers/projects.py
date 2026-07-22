@@ -51,11 +51,12 @@ async def _background_pipeline(project_id: int) -> None:
 
 @router.get("/health")
 def health():
-    from backend.config import LLM_PROVIDER, use_mock_llm
+    from backend.config import LLM_MODEL, LLM_PROVIDER, use_mock_llm
 
     return {
         "status": "ok",
         "llm_provider": LLM_PROVIDER,
+        "llm_model": LLM_MODEL,
         "mock_mode": use_mock_llm(),
     }
 

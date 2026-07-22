@@ -28,6 +28,7 @@ def _extract_json(text: str) -> Any:
 async def call_llm_json(system: str, user: str, mock_payload: dict[str, Any]) -> dict[str, Any]:
     """Call configured LLM and parse JSON. Falls back to mock_payload."""
     if use_mock_llm():
+        print("[LLM] mock_mode enabled — using built-in demo payload")
         return mock_payload
 
     try:
@@ -49,8 +50,8 @@ async def call_llm_json(system: str, user: str, mock_payload: dict[str, Any]) ->
             prefer_json_mode=True,
         )
     except Exception as exc:  # noqa: BLE001 — MVP resilience
-        print(f"[LLM] Error, using mock: {exc}")
-        return mock_payload
+        # 真实模型模式下不再静默吞错成演示数据，避免用户误以为已接上模型
+        raise RuntimeError(f"LLM call failed ({LLM_PROVIDER}/{LLM_MODEL}): {exc}") from exc
 
 
 async def _call_openai_compatible(
@@ -78,7 +79,7 @@ async def _call_openai_compatible(
 
     create_kwargs: dict[str, Any] = {
         "model": LLM_MODEL,
-        "temperature": 0.7,
+        "temperature": 1 if LLM_PROVIDER in {"kimi", "moonshot"} or LLM_MODEL.startswith("kimi") else 0.7,
         "messages": messages,
     }
     if prefer_json_mode:
