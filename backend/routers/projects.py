@@ -22,6 +22,9 @@ from backend.schemas import (
 
 router = APIRouter(prefix="/api")
 
+# Per-project run generation — force rerun bumps the token so old background jobs exit.
+_run_generation: dict[int, int] = {}
+
 
 def _get_project(db: Session, project_id: int) -> Project:
     project = (
@@ -39,14 +42,43 @@ def _get_project(db: Session, project_id: int) -> Project:
     return project
 
 
-async def _background_pipeline(project_id: int) -> None:
+def _next_generation(project_id: int) -> int:
+    _run_generation[project_id] = _run_generation.get(project_id, 0) + 1
+    return _run_generation[project_id]
+
+
+def _current_generation(project_id: int) -> int:
+    return _run_generation.get(project_id, 0)
+
+
+async def _background_pipeline(project_id: int, generation: int) -> None:
     db = SessionLocal()
     try:
         project = db.query(Project).filter(Project.id == project_id).first()
-        if project:
-            await run_research_pipeline(db, project)
+        if not project:
+            return
+        try:
+            await run_research_pipeline(
+                db,
+                project,
+                should_continue=lambda: _current_generation(project_id) == generation,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[pipeline] project {project_id} failed: {exc}")
+            if _current_generation(project_id) != generation:
+                return
+            project = db.query(Project).filter(Project.id == project_id).first()
+            if project and project.status == "running":
+                project.status = "draft"
+                db.commit()
     finally:
         db.close()
+
+
+def _mark_project_running(db: Session, project: Project) -> None:
+    project.status = "running"
+    project.updated_at = datetime.utcnow()
+    db.commit()
 
 
 @router.get("/health")
@@ -73,7 +105,7 @@ async def create_project(
     background: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    project = Project(title=payload.title, raw_input=payload.raw_input, status="draft")
+    project = Project(title=payload.title, raw_input=payload.raw_input, status="running")
     db.add(project)
     db.commit()
     db.refresh(project)
@@ -88,7 +120,7 @@ async def create_project(
     )
     db.commit()
 
-    background.add_task(_background_pipeline, project.id)
+    background.add_task(_background_pipeline, project.id, _next_generation(project.id))
     project = _get_project(db, project.id)
     return serialize_project(project)
 
@@ -103,12 +135,25 @@ async def rerun_pipeline(
     project_id: int,
     background: BackgroundTasks,
     db: Session = Depends(get_db),
+    force: bool = True,
 ):
+    """Restart research pipeline. Default force=True so stuck 'running' jobs can recover."""
+    from backend.database.models import AgentStep
+
     project = _get_project(db, project_id)
-    if project.status == "running":
+    if project.status == "running" and not force:
         raise HTTPException(status_code=409, detail="Pipeline already running")
-    background.add_task(_background_pipeline, project.id)
-    return {"ok": True, "status": "running"}
+
+    # Reset step statuses so UI shows a fresh run
+    for step in db.query(AgentStep).filter(AgentStep.project_id == project_id).all():
+        step.status = "pending"
+        step.message = "Waiting to restart"
+        step.started_at = None
+        step.completed_at = None
+    _mark_project_running(db, project)
+    gen = _next_generation(project_id)
+    background.add_task(_background_pipeline, project.id, gen)
+    return {"ok": True, "status": "running", "forced": force}
 
 
 @router.patch("/projects/{project_id}/concepts/{concept_key}")

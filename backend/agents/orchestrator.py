@@ -71,22 +71,40 @@ def _log_decision(
     db.commit()
 
 
-async def run_research_pipeline(db: Session, project: Project) -> Project:
+async def run_research_pipeline(
+    db: Session,
+    project: Project,
+    should_continue: Any | None = None,
+) -> Project:
     """Run agents 1-4: requirement → research → insight → concepts."""
+    from collections.abc import Callable
+
+    cont: Callable[[], bool] = should_continue or (lambda: True)
+
     project.status = "running"
     db.commit()
 
     context: dict[str, Any] = {"raw_input": project.raw_input}
 
     for agent in PIPELINE:
+        if not cont():
+            print(f"[pipeline] project {project.id} superseded — stop before {agent.name}")
+            return project
+
         _upsert_step(db, project.id, agent.name, "running", f"{agent.name} running...")
         try:
             output = await agent.run(context)
         except Exception as exc:  # noqa: BLE001
+            if not cont():
+                return project
             _upsert_step(db, project.id, agent.name, "failed", str(exc))
             project.status = "draft"
             db.commit()
             raise
+
+        if not cont():
+            print(f"[pipeline] project {project.id} superseded — discard {agent.name} result")
+            return project
 
         _upsert_step(db, project.id, agent.name, "completed", agent.display_message, output)
         _log_decision(
@@ -121,6 +139,9 @@ async def run_research_pipeline(db: Session, project: Project) -> Project:
 
         project.updated_at = datetime.utcnow()
         db.commit()
+
+    if not cont():
+        return project
 
     project.status = "concepts_ready"
     db.commit()

@@ -340,7 +340,7 @@
               <h2>AI Research Board</h2>
               <button class="btn" data-action="rerun">重新运行 Agents</button>
             </div>
-            ${!r && p.status === 'running' ? '<p class="muted">Agents 正在分析需求与市场…</p>' : ''}
+            ${!r && (p.status === 'running' || p.status === 'draft') ? '<p class="muted">Agents 正在用 kimi-k3 分析（通常需要 1–3 分钟），请稍候，不要反复点击「重新运行」…</p>' : ''}
             ${r ? `
               <div style="margin-bottom:22px">
                 <h3>结构化需求</h3>
@@ -622,6 +622,7 @@
       }
       if (action === 'rerun') {
         await withBusy(async () => {
+          state.error = '';
           await api.rerun(state.project.id);
           state.project = await api.getProject(state.project.id);
         });
