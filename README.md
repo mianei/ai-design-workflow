@@ -57,28 +57,32 @@ Human Decision Layer：收藏、评分、改关键词、合并方向、选择并
 
 ## 快速启动
 
-### 1. 后端
+### 方式 A：纯 HTML（推荐，无需 Node）
 
 ```bash
 # 在仓库根目录
 py -m pip install -r backend/requirements.txt
 copy .env.example .env   # Windows
-# 可选：填入 OPENAI_API_KEY 或 ANTHROPIC_API_KEY
 py -m uvicorn backend.main:app --reload --port 8000
 ```
 
-API 文档：http://127.0.0.1:8000/docs  
-健康检查：http://127.0.0.1:8000/api/health
+打开：**http://127.0.0.1:8000/app**  
+单文件界面：`static/index.html`（也可双击打开；需后端已启动）
 
-### 2. 前端
+### 方式 B：React 前端
 
 ```bash
+# 终端 1：后端同上
+# 终端 2：
 cd frontend
 npm install
 npm run dev
 ```
 
 打开：http://127.0.0.1:5173
+
+API 文档：http://127.0.0.1:8000/docs  
+健康检查：http://127.0.0.1:8000/api/health
 
 ### 环境变量
 
@@ -104,16 +108,12 @@ npm run dev
 ai-design-workflow/
 ├── backend/
 │   ├── agents/
-│   │   ├── requirement_agent.py
-│   │   ├── research_agent.py
-│   │   ├── insight_agent.py
-│   │   ├── concept_agent.py
-│   │   ├── brief_agent.py
-│   │   └── orchestrator.py
 │   ├── database/
 │   ├── routers/
 │   └── main.py
-├── frontend/
+├── static/
+│   └── index.html     # 纯 HTML 完整界面（推荐）
+├── frontend/          # React 版本（可选）
 ├── database/          # SQLite 文件目录
 ├── .env.example
 └── README.md

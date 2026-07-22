@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Designflow · AI Product Concept Workflow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f3f1ec;
+      --bg-elevated: #fffcf7;
+      --ink: #1a1c1a;
+      --muted: #5f6460;
+      --line: #d7d2c8;
+      --accent: #0f6e56;
+      --accent-soft: #d8efe6;
+      --warn: #9a5b16;
+      --danger: #a33b32;
+      --ai: #2b4c7e;
+      --shadow: 0 18px 50px rgba(26, 28, 26, 0.08);
+      --radius: 14px;
+      --font-display: "Syne", "Avenir Next", sans-serif;
+      --font-body: "IBM Plex Sans", "Segoe UI", sans-serif;
+      --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; margin: 0; }
+    body {
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% -10%, #e7f3ee 0%, transparent 42%),
+        radial-gradient(circle at 90% 0%, #efe8da 0%, transparent 36%),
+        linear-gradient(180deg, #f7f5f0 0%, var(--bg) 100%);
+      font-family: var(--font-body);
+      font-size: 15px;
+      line-height: 1.55;
+    }
+    button, input, textarea, select { font: inherit; }
+    h1, h2, h3, h4 { font-family: var(--font-display); letter-spacing: -0.03em; margin: 0 0 0.4em; }
+    p { margin: 0 0 0.8em; }
+    .app-shell { max-width: 1200px; margin: 0 auto; padding: 28px 24px 64px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
+    .brand strong { font-family: var(--font-display); font-size: 1.35rem; letter-spacing: -0.04em; display: block; }
+    .brand span { color: var(--muted); font-size: 0.86rem; }
+    .nav-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    .nav-pills button, .btn {
+      border: 1px solid var(--line);
+      background: rgba(255, 252, 247, 0.8);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 8px 14px;
+      cursor: pointer;
+      transition: 160ms ease;
+    }
+    .nav-pills button.active, .btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .btn.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+    .panel {
+      background: var(--bg-elevated);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 22px;
+    }
+    .panel + .panel { margin-top: 18px; }
+    .grid-2 { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 18px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .muted { color: var(--muted); }
+    .tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 999px;
+      background: var(--accent-soft); color: var(--accent);
+      font-size: 0.78rem; font-weight: 600;
+    }
+    .tag.neutral { background: #ece8e0; color: var(--muted); }
+    .tag.ai { background: #e4ebf5; color: var(--ai); }
+    .field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+    .field label { font-size: 0.84rem; font-weight: 600; }
+    .field input, .field textarea, .field select {
+      width: 100%; border: 1px solid var(--line); border-radius: 10px;
+      padding: 11px 12px; background: #fff;
+    }
+    .field textarea { min-height: 140px; resize: vertical; }
+    .project-list { display: flex; flex-direction: column; gap: 10px; }
+    .project-item {
+      display: flex; justify-content: space-between; gap: 12px;
+      padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px;
+      background: #fff; cursor: pointer; transition: 160ms ease; text-align: left; width: 100%;
+    }
+    .project-item:hover { border-color: #b9cfc5; transform: translateY(-1px); }
+    .agent-rail { display: flex; flex-direction: column; gap: 10px; }
+    .agent-step {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: #fff;
+    }
+    .agent-step .mark {
+      width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+      font-size: 0.75rem; font-weight: 700; flex-shrink: 0; background: #ece8e0; color: var(--muted);
+    }
+    .agent-step.completed .mark { background: var(--accent); color: #fff; }
+    .agent-step.running .mark { background: #f0d9a8; color: var(--warn); animation: pulse 1.2s infinite; }
+    .agent-step.failed .mark { background: #f3d8d5; color: var(--danger); }
+    @keyframes pulse { 50% { transform: scale(1.08); } }
+    .concept-card {
+      border: 1px solid var(--line); border-radius: 14px; background: #fff;
+      padding: 18px; display: flex; flex-direction: column; gap: 12px; min-height: 100%;
+    }
+    .concept-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+    .keyword-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .keyword { font-family: var(--font-mono); font-size: 0.75rem; padding: 4px 8px; border-radius: 8px; background: #f0ece4; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
+    .list-clean { margin: 0; padding-left: 1.1rem; }
+    .list-clean li { margin-bottom: 0.35rem; }
+    .history-item {
+      display: grid; grid-template-columns: 88px 1fr; gap: 12px;
+      padding: 12px 0; border-bottom: 1px solid var(--line);
+    }
+    .history-item:last-child { border-bottom: 0; }
+    .mono { font-family: var(--font-mono); font-size: 0.8rem; }
+    .section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .empty { padding: 28px; text-align: center; color: var(--muted); }
+    .hidden { display: none !important; }
+    .banner {
+      margin-bottom: 16px; padding: 10px 14px; border-radius: 10px;
+      background: #e4ebf5; color: var(--ai); font-size: 0.9rem;
+    }
+    .banner.err { background: #f3d8d5; color: var(--danger); }
+    pre.dump {
+      margin: 8px 0 0; white-space: pre-wrap; background: #f7f4ee;
+      padding: 10px; border-radius: 8px; font-family: var(--font-mono); font-size: 0.8rem;
+    }
+    @media (max-width: 960px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell" id="app"></div>
+  <script>
+    const API = localStorage.getItem('designflow_api') || 'http://127.0.0.1:8000';
+    const SAMPLE = `产品：智能水杯
+目标用户：25-35岁女性
+价格：300-500元
+品牌定位：年轻、科技、高品质`;
+
+    const ORDER = ['requirement', 'research', 'insight', 'concept', 'brief'];
+    const LABELS = {
+      requirement: 'Requirement analysis',
+      research: 'Market research',
+      insight: 'User insight',
+      concept: 'Concept generation',
+      brief: 'Design brief',
+    };
+    const EVENT_LABELS = {
+      project_created: '创建项目',
+      ai_generated: 'AI 生成',
+      favorite: '收藏方案',
+      rate: '评分',
+      user_edit: '人工修改',
+      merge: '合并方向',
+      select_brief: '选择概念并生成 Brief',
+      finalize: '最终确认',
+    };
+
+    const state = {
+      view: 'dashboard', // dashboard | research | concepts | brief | history
+      projects: [],
+      project: null,
+      busy: false,
+      error: '',
+      health: null,
+      pollTimer: null,
+      keywordDrafts: {},
+      mergeA: '',
+      mergeB: '',
+      briefNote: '',
+    };
+
+    async function request(path, options = {}) {
+      const res = await fetch(API + path, {
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        ...options,
+      });
+      if (!res.ok) throw new Error(await res.text() || res.statusText);
+      return res.json();
+    }
+
+    const api = {
+      health: () => request('/api/health'),
+      listProjects: () => request('/api/projects'),
+      getProject: (id) => request(`/api/projects/${id}`),
+      createProject: (title, raw_input) =>
+        request('/api/projects', { method: 'POST', body: JSON.stringify({ title, raw_input }) }),
+      rerun: (id) => request(`/api/projects/${id}/rerun`, { method: 'POST' }),
+      updateConcept: (id, key, body) =>
+        request(`/api/projects/${id}/concepts/${key}`, { method: 'PATCH', body: JSON.stringify(body) }),
+      mergeConcepts: (id, a, b) =>
+        request(`/api/projects/${id}/concepts/merge`, {
+          method: 'POST', body: JSON.stringify({ source_a: a, source_b: b }),
+        }),
+      generateBrief: (id, concept_key) =>
+        request(`/api/projects/${id}/brief/generate`, {
+          method: 'POST', body: JSON.stringify({ concept_key }),
+        }),
+      updateBrief: (id, brief) =>
+        request(`/api/projects/${id}/brief`, { method: 'PATCH', body: JSON.stringify(brief) }),
+      finalize: (id, note) =>
+        request(`/api/projects/${id}/finalize`, { method: 'POST', body: JSON.stringify({ note }) }),
+    };
+
+    function esc(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function stopPoll() {
+      if (state.pollTimer) {
+        clearInterval(state.pollTimer);
+        state.pollTimer = null;
+      }
+    }
+
+    function startPollIfNeeded() {
+      stopPoll();
+      if (state.project?.status === 'running') {
+        state.pollTimer = setInterval(async () => {
+          try {
+            state.project = await api.getProject(state.project.id);
+            render();
+            if (state.project.status !== 'running') stopPoll();
+          } catch (_) { /* ignore */ }
+        }, 1500);
+      }
+    }
+
+    function topbar() {
+      const p = state.project;
+      const tabs = [
+        ['research', 'Research Board'],
+        ['concepts', 'Concept Board'],
+        ['brief', 'Brief Editor'],
+        ['history', 'Decision History'],
+      ];
+      return `
+        <header class="topbar">
+          <div class="brand">
+            <strong>Designflow</strong>
+            <span>${p ? esc(p.title) : 'AI Product Concept Workflow Agent · HTML'}</span>
+          </div>
+          <nav class="nav-pills">
+            <button data-action="go-dashboard" class="${state.view === 'dashboard' ? 'active' : ''}">Projects</button>
+            ${p ? tabs.map(([v, label]) =>
+              `<button data-action="go-view" data-view="${v}" class="${state.view === v ? 'active' : ''}">${label}</button>`
+            ).join('') : ''}
+          </nav>
+        </header>
+      `;
+    }
+
+    function agentRail(steps = []) {
+      const byName = Object.fromEntries((steps || []).map((s) => [s.agent_name, s]));
+      return `
+        <div class="agent-rail">
+          ${ORDER.map((name) => {
+            const step = byName[name];
+            const status = step?.status || 'pending';
+            const mark = status === 'completed' ? '✓' : status === 'running' ? '…' : status === 'failed' ? '!' : '○';
+            return `
+              <div class="agent-step ${status}">
+                <div class="mark">${mark}</div>
+                <div>
+                  <strong>${status === 'completed' ? '✓ ' : ''}${LABELS[name]}${status === 'completed' ? ' completed' : status === 'running' ? '…' : ''}</strong>
+                  <div class="muted" style="font-size:0.86rem">${esc(step?.message || (status === 'pending' ? 'Waiting for previous agents' : status))}</div>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function viewDashboard() {
+      return `
+        ${topbar()}
+        ${state.health ? `<div class="banner">API ${esc(API)} · mock_mode=${state.health.mock_mode} · provider=${esc(state.health.llm_provider)}</div>` : ''}
+        ${state.error ? `<div class="banner err">${esc(state.error)}</div>` : ''}
+        <div class="grid-2">
+          <section class="panel">
+            <div class="section-title">
+              <h2>新建项目</h2>
+              <span class="tag">Human starts · AI explores</span>
+            </div>
+            <p class="muted">输入模糊产品需求，系统依次运行 Agents，生成可选方向。最终 brief 必须由人确认。</p>
+            <form id="create-form">
+              <div class="field">
+                <label>项目名称</label>
+                <input name="title" value="智能水杯概念探索" required />
+              </div>
+              <div class="field">
+                <label>产品需求</label>
+                <textarea name="raw" required>${esc(SAMPLE)}</textarea>
+              </div>
+              <button class="btn accent" type="submit" ${state.busy ? 'disabled' : ''}>
+                ${state.busy ? '启动 Agent 工作流…' : '启动 AI 工作流'}
+              </button>
+            </form>
+          </section>
+          <section class="panel">
+            <div class="section-title">
+              <h2>Project Dashboard</h2>
+              <button class="btn" type="button" data-action="refresh-list">刷新</button>
+            </div>
+            ${state.projects.length === 0
+              ? '<div class="empty">还没有项目。</div>'
+              : `<div class="project-list">${state.projects.map((p) => `
+                  <button class="project-item" data-action="open-project" data-id="${p.id}">
+                    <div>
+                      <strong>${esc(p.title)}</strong>
+                      <div class="muted" style="font-size:0.86rem">${esc((p.raw_input || '').slice(0, 72))}${(p.raw_input || '').length > 72 ? '…' : ''}</div>
+                    </div>
+                    <span class="tag neutral">${esc(p.status)}</span>
+                  </button>`).join('')}</div>`}
+          </section>
+        </div>
+      `;
+    }
+
+    function viewResearch() {
+      const p = state.project;
+      const { requirement: r, research: m, insight: i } = p;
+      return `
+        ${topbar()}
+        ${state.error ? `<div class="banner err">${esc(state.error)}</div>` : ''}
+        <div class="grid-2">
+          <section class="panel">
+            <div class="section-title">
+              <h2>AI Research Board</h2>
+              <button class="btn" data-action="rerun">重新运行 Agents</button>
+            </div>
+            ${!r && p.status === 'running' ? '<p class="muted">Agents 正在分析需求与市场…</p>' : ''}
+            ${r ? `
+              <div style="margin-bottom:22px">
+                <h3>结构化需求</h3>
+                <div class="keyword-row" style="margin-bottom:10px">
+                  <span class="tag">${esc(r.product_category)}</span>
+                  <span class="tag neutral">${esc(r.price_range)}</span>
+                  <span class="tag ai">${esc(r.brand_attributes)}</span>
+                </div>
+                <p><strong>用户：</strong>${esc(r.target_users)}</p>
+                <p><strong>商业目标：</strong>${esc(r.business_goal)}</p>
+                <p class="muted"><strong>约束：</strong>${esc(r.design_constraints)}</p>
+              </div>` : ''}
+            ${m ? `
+              <div style="margin-bottom:22px">
+                <h3>市场趋势</h3>
+                <ul class="list-clean">${m.market_trends.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+                <h3>竞品分析</h3>
+                <div class="project-list">${m.competitors.map((c) => `
+                  <div class="project-item" style="cursor:default">
+                    <div>
+                      <strong>${esc(c.name)}</strong>
+                      <div class="muted">优势：${esc(c.strength)}</div>
+                      <div class="muted">劣势：${esc(c.weakness)}</div>
+                    </div>
+                  </div>`).join('')}</div>
+                <h3 style="margin-top:16px">用户痛点</h3>
+                <ul class="list-clean">${m.user_pain_points.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+                <h3>市场机会</h3>
+                <ul class="list-clean">${m.opportunities.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+              </div>` : ''}
+            ${i ? `
+              <div>
+                <h3>User Persona</h3>
+                <p><strong>${esc(i.name)} · ${esc(i.age)}岁</strong></p>
+                <p class="muted">${esc(i.scenario)}</p>
+                <p><strong>Needs</strong></p>
+                <ul class="list-clean">${i.needs.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>
+                <p><strong>Frustrations</strong></p>
+                <ul class="list-clean">${i.frustrations.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
+                <p><strong>购买动机：</strong>${esc(i.buying_reason)}</p>
+              </div>` : ''}
+          </section>
+          <aside class="panel">
+            <div class="section-title">
+              <h2>Agent 执行过程</h2>
+              <span class="tag ai">${esc(p.status)}</span>
+            </div>
+            ${agentRail(p.agent_steps)}
+          </aside>
+        </div>
+      `;
+    }
+
+    function viewConcepts() {
+      const p = state.project;
+      const concepts = p.concepts || [];
+      return `
+        ${topbar()}
+        ${state.error ? `<div class="banner err">${esc(state.error)}</div>` : ''}
+        <section class="panel">
+          <div class="section-title">
+            <div>
+              <h2>Concept Board</h2>
+              <p class="muted" style="margin:0">AI 只提供方向。请收藏、评分、改关键词，或合并两个方向。</p>
+            </div>
+            <span class="tag">Human Decision Layer</span>
+          </div>
+          ${concepts.length === 0
+            ? `<div class="grid-2"><div class="empty">概念尚未生成</div>${agentRail(p.agent_steps)}</div>`
+            : `
+              <div class="grid-3">
+                ${concepts.map((c) => {
+                  const draft = state.keywordDrafts[c.concept_key] ?? (c.design_keywords || []).join(', ');
+                  return `
+                    <article class="concept-card ${p.selected_concept_id === c.concept_key ? 'selected' : ''}">
+                      <div class="section-title" style="margin-bottom:0">
+                        <h3>${esc(c.concept_name)}</h3>
+                        ${c.is_favorite ? '<span class="tag">已收藏</span>' : ''}
+                      </div>
+                      <p class="muted" style="margin:0">${esc(c.target_user)}</p>
+                      <div class="keyword-row">${(c.design_keywords || []).map((k) => `<span class="keyword">${esc(k)}</span>`).join('')}</div>
+                      <div>
+                        <strong>产品特征</strong>
+                        <ul class="list-clean">${(c.product_features || []).map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
+                      </div>
+                      <p><strong>视觉方向：</strong>${esc(c.visual_direction)}</p>
+                      <p class="muted"><strong>商业价值：</strong>${esc(c.business_value)}</p>
+                      <div class="field" style="margin-bottom:0">
+                        <label>修改关键词</label>
+                        <input data-keywords="${esc(c.concept_key)}" value="${esc(draft)}" />
+                      </div>
+                      <div class="actions">
+                        <button class="btn" data-action="favorite" data-key="${esc(c.concept_key)}" data-fav="${c.is_favorite ? '0' : '1'}">${c.is_favorite ? '取消收藏' : '收藏'}</button>
+                        <button class="btn" data-action="rate" data-key="${esc(c.concept_key)}" data-rating="4">评分 4★</button>
+                        <button class="btn" data-action="rate" data-key="${esc(c.concept_key)}" data-rating="5">评分 5★</button>
+                        <button class="btn" data-action="save-keywords" data-key="${esc(c.concept_key)}">保存关键词</button>
+                        <button class="btn accent" data-action="select-brief" data-key="${esc(c.concept_key)}">选此方向生成 Brief</button>
+                      </div>
+                      ${c.rating != null ? `<div class="mono muted">当前评分：${esc(c.rating)}</div>` : ''}
+                      ${c.merged_from ? `<div class="mono muted">合并自：${esc(c.merged_from)}</div>` : ''}
+                    </article>`;
+                }).join('')}
+              </div>
+              <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap">
+                <select id="merge-a">
+                  <option value="">合并来源 A</option>
+                  ${concepts.map((c) => `<option value="${esc(c.concept_key)}" ${state.mergeA === c.concept_key ? 'selected' : ''}>${esc(c.concept_name)}</option>`).join('')}
+                </select>
+                <select id="merge-b">
+                  <option value="">合并来源 B</option>
+                  ${concepts.map((c) => `<option value="${esc(c.concept_key)}" ${state.mergeB === c.concept_key ? 'selected' : ''}>${esc(c.concept_name)}</option>`).join('')}
+                </select>
+                <button class="btn" data-action="merge">合并两个方向</button>
+              </div>`}
+        </section>
+      `;
+    }
+
+    function viewBrief() {
+      const p = state.project;
+      const b = p.brief;
+      return `
+        ${topbar()}
+        ${state.error ? `<div class="banner err">${esc(state.error)}</div>` : ''}
+        <section class="panel">
+          <div class="section-title">
+            <div>
+              <h2>Brief Editor</h2>
+              <p class="muted" style="margin:0">AI 生成初稿，设计师可编辑。只有人工确认后才会进入 decided。</p>
+            </div>
+            <span class="tag">${esc(p.status)}</span>
+          </div>
+          ${!b ? '<div class="empty">尚未选择概念。请先到 Concept Board 选择方向。</div>' : `
+            <form id="brief-form">
+              <div class="field"><label>Design Goal</label><textarea name="design_goal">${esc(b.design_goal)}</textarea></div>
+              <div class="field"><label>Target User</label><input name="target_user" value="${esc(b.target_user)}" /></div>
+              <div class="field"><label>Design Keywords</label><input name="design_keywords" value="${esc((b.design_keywords || []).join(', '))}" /></div>
+              <div class="field"><label>Form Language</label><textarea name="form_language">${esc(b.form_language)}</textarea></div>
+              <div class="field"><label>CMF Direction</label><textarea name="CMF_direction">${esc(b.CMF_direction)}</textarea></div>
+              <div class="field"><label>Must-have Features</label><textarea name="must_have_features">${esc(b.must_have_features)}</textarea></div>
+              <div class="field"><label>Avoid Features</label><textarea name="avoid_features">${esc(b.avoid_features)}</textarea></div>
+              <div class="actions"><button class="btn primary" type="submit">保存人工修改</button></div>
+            </form>
+            <div class="panel" style="margin-top:18px;box-shadow:none">
+              <h3>最终确认（Human only）</h3>
+              <p class="muted">AI 不能自动决定最终方案。</p>
+              <div class="field"><label>确认备注</label><input id="final-note" value="${esc(state.briefNote)}" placeholder="可选" /></div>
+              <button class="btn accent" data-action="finalize" ${p.status === 'decided' ? 'disabled' : ''}>
+                ${p.status === 'decided' ? '已确认最终 Brief' : '确认最终 Design Brief'}
+              </button>
+            </div>`}
+        </section>
+      `;
+    }
+
+    function viewHistory() {
+      const p = state.project;
+      const decisions = [...(p.decisions || [])].reverse();
+      return `
+        ${topbar()}
+        <section class="panel">
+          <div class="section-title">
+            <h2>Decision History</h2>
+            <span class="tag neutral">${decisions.length} events</span>
+          </div>
+          <p class="muted">记录 AI 产出与人工决策。</p>
+          ${decisions.length === 0 ? '<div class="empty">暂无决策记录。</div>' : decisions.map((d) => `
+            <div class="history-item">
+              <div><span class="tag ${d.actor === 'ai' ? 'ai' : ''}">${d.actor === 'ai' ? 'AI' : 'Human'}</span></div>
+              <div>
+                <strong>${esc(EVENT_LABELS[d.event_type] || d.event_type)}</strong>
+                <div class="mono muted">${esc(d.created_at)}</div>
+                <pre class="dump">${esc(JSON.stringify(d.payload || {}, null, 2))}</pre>
+              </div>
+            </div>`).join('')}
+        </section>
+      `;
+    }
+
+    function render() {
+      const root = document.getElementById('app');
+      if (state.view === 'dashboard') root.innerHTML = viewDashboard();
+      else if (state.view === 'research') root.innerHTML = viewResearch();
+      else if (state.view === 'concepts') root.innerHTML = viewConcepts();
+      else if (state.view === 'brief') root.innerHTML = viewBrief();
+      else if (state.view === 'history') root.innerHTML = viewHistory();
+      bind();
+      startPollIfNeeded();
+    }
+
+    async function withBusy(fn) {
+      state.busy = true;
+      state.error = '';
+      render();
+      try {
+        await fn();
+      } catch (e) {
+        state.error = e.message || String(e);
+      } finally {
+        state.busy = false;
+        render();
+      }
+    }
+
+    function bind() {
+      document.querySelectorAll('[data-action]').forEach((el) => {
+        el.addEventListener('click', onAction);
+      });
+      const form = document.getElementById('create-form');
+      if (form) {
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(form);
+          await withBusy(async () => {
+            const project = await api.createProject(String(fd.get('title')).trim(), String(fd.get('raw')).trim());
+            state.projects = await api.listProjects();
+            state.project = project;
+            state.view = 'research';
+          });
+        });
+      }
+      const briefForm = document.getElementById('brief-form');
+      if (briefForm) {
+        briefForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(briefForm);
+          await withBusy(async () => {
+            state.project = await api.updateBrief(state.project.id, {
+              design_goal: String(fd.get('design_goal')),
+              target_user: String(fd.get('target_user')),
+              design_keywords: String(fd.get('design_keywords')).split(/[,，]/).map((s) => s.trim()).filter(Boolean),
+              form_language: String(fd.get('form_language')),
+              CMF_direction: String(fd.get('CMF_direction')),
+              must_have_features: String(fd.get('must_have_features')),
+              avoid_features: String(fd.get('avoid_features')),
+            });
+          });
+        });
+      }
+      document.querySelectorAll('input[data-keywords]').forEach((input) => {
+        input.addEventListener('input', () => {
+          state.keywordDrafts[input.dataset.keywords] = input.value;
+        });
+      });
+      const mergeA = document.getElementById('merge-a');
+      const mergeB = document.getElementById('merge-b');
+      if (mergeA) mergeA.addEventListener('change', () => { state.mergeA = mergeA.value; });
+      if (mergeB) mergeB.addEventListener('change', () => { state.mergeB = mergeB.value; });
+      const note = document.getElementById('final-note');
+      if (note) note.addEventListener('input', () => { state.briefNote = note.value; });
+    }
+
+    async function onAction(e) {
+      const btn = e.currentTarget;
+      const action = btn.dataset.action;
+      if (action === 'go-dashboard') {
+        stopPoll();
+        state.view = 'dashboard';
+        state.project = null;
+        state.projects = await api.listProjects().catch(() => state.projects);
+        render();
+        return;
+      }
+      if (action === 'go-view') {
+        state.view = btn.dataset.view;
+        render();
+        return;
+      }
+      if (action === 'refresh-list') {
+        await withBusy(async () => { state.projects = await api.listProjects(); });
+        return;
+      }
+      if (action === 'open-project') {
+        await withBusy(async () => {
+          state.project = await api.getProject(Number(btn.dataset.id));
+          state.view = 'research';
+        });
+        return;
+      }
+      if (action === 'rerun') {
+        await withBusy(async () => {
+          await api.rerun(state.project.id);
+          state.project = await api.getProject(state.project.id);
+        });
+        return;
+      }
+      if (action === 'favorite') {
+        await withBusy(async () => {
+          state.project = await api.updateConcept(state.project.id, btn.dataset.key, {
+            is_favorite: btn.dataset.fav === '1',
+          });
+        });
+        return;
+      }
+      if (action === 'rate') {
+        await withBusy(async () => {
+          state.project = await api.updateConcept(state.project.id, btn.dataset.key, {
+            rating: Number(btn.dataset.rating),
+          });
+        });
+        return;
+      }
+      if (action === 'save-keywords') {
+        const key = btn.dataset.key;
+        const raw = state.keywordDrafts[key] ?? '';
+        await withBusy(async () => {
+          state.project = await api.updateConcept(state.project.id, key, {
+            design_keywords: raw.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
+          });
+        });
+        return;
+      }
+      if (action === 'select-brief') {
+        await withBusy(async () => {
+          state.project = await api.generateBrief(state.project.id, btn.dataset.key);
+          state.view = 'brief';
+        });
+        return;
+      }
+      if (action === 'merge') {
+        const a = document.getElementById('merge-a')?.value;
+        const b = document.getElementById('merge-b')?.value;
+        if (!a || !b || a === b) {
+          state.error = '请选择两个不同的方向再合并';
+          render();
+          return;
+        }
+        await withBusy(async () => {
+          state.project = await api.mergeConcepts(state.project.id, a, b);
+        });
+        return;
+      }
+      if (action === 'finalize') {
+        await withBusy(async () => {
+          state.project = await api.finalize(state.project.id, state.briefNote || 'Human confirmed final brief');
+        });
+      }
+    }
+
+    async function boot() {
+      try {
+        state.health = await api.health();
+        state.projects = await api.listProjects();
+      } catch (e) {
+        state.error = `无法连接后端 ${API}。请先启动：py -m uvicorn backend.main:app --port 8000\n${e.message || e}`;
+      }
+      render();
+    }
+
+    boot();
+  </script>
+</body>
+</html>
