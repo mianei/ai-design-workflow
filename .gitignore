@@ -6,6 +6,8 @@ __pycache__/
 venv/
 .env
 database/*.db
+database/*.db-wal
+database/*.db-shm
 database/sketches/**
 !database/sketches/.gitkeep
 !database/.gitkeep
