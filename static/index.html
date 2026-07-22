@@ -104,6 +104,43 @@
     .agent-step.running .mark { background: #f0d9a8; color: var(--warn); animation: pulse 1.2s infinite; }
     .agent-step.failed .mark { background: #f3d8d5; color: var(--danger); }
     @keyframes pulse { 50% { transform: scale(1.08); } }
+    .sketch-frame {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #f7f4ee;
+      aspect-ratio: 1 / 0.88;
+    }
+    .sketch-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      background: #f7f4ee;
+    }
+    .sketch-tabs {
+      display: flex;
+      gap: 6px;
+      margin: 8px 0 4px;
+    }
+    .sketch-tabs button {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .sketch-tabs button.active {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+    }
+    .cmf-row { display: flex; gap: 6px; margin-top: 6px; }
+    .cmf-swatch {
+      width: 18px; height: 18px; border-radius: 4px;
+      border: 1px solid #1a1c1a33;
+    }
     .concept-card {
       border: 1px solid var(--line); border-radius: 14px; background: #fff;
       padding: 18px; display: flex; flex-direction: column; gap: 12px; min-height: 100%;
@@ -146,12 +183,13 @@
 价格：300-500元
 品牌定位：年轻、科技、高品质`;
 
-    const ORDER = ['requirement', 'research', 'insight', 'concept', 'brief'];
+    const ORDER = ['requirement', 'research', 'insight', 'concept', 'sketch', 'brief'];
     const LABELS = {
       requirement: 'Requirement analysis',
       research: 'Market research',
       insight: 'User insight',
       concept: 'Concept generation',
+      sketch: 'Concept sketches',
       brief: 'Design brief',
     };
     const EVENT_LABELS = {
@@ -195,6 +233,7 @@
       createProject: (title, raw_input) =>
         request('/api/projects', { method: 'POST', body: JSON.stringify({ title, raw_input }) }),
       rerun: (id) => request(`/api/projects/${id}/rerun`, { method: 'POST' }),
+      generateSketches: (id) => request(`/api/projects/${id}/sketches`, { method: 'POST' }),
       updateConcept: (id, key, body) =>
         request(`/api/projects/${id}/concepts/${key}`, { method: 'PATCH', body: JSON.stringify(body) }),
       mergeConcepts: (id, a, b) =>
@@ -210,6 +249,28 @@
       finalize: (id, note) =>
         request(`/api/projects/${id}/finalize`, { method: 'POST', body: JSON.stringify({ note }) }),
     };
+
+    function sketchBlock(c) {
+      const sketch = c.sketch_svg;
+      const image = c.sketch_image_url
+        ? (String(c.sketch_image_url).startsWith('http') ? c.sketch_image_url : API + c.sketch_image_url)
+        : '';
+      if (!sketch && !image) {
+        return '<div class="empty" style="padding:16px">草图生成中或尚未生成</div>';
+      }
+      const primary = sketch || image;
+      const secondary = sketch && image ? image : '';
+      return `
+        <div class="sketch-frame" data-sketch-key="${esc(c.concept_key)}">
+          <img src="${primary}" alt="${esc(c.concept_name)} sketch" />
+        </div>
+        ${secondary ? `
+          <div class="sketch-tabs">
+            <button type="button" class="active" data-action="sketch-view" data-key="${esc(c.concept_key)}" data-src="${esc(primary)}">设计草图</button>
+            <button type="button" data-action="sketch-view" data-key="${esc(c.concept_key)}" data-src="${esc(secondary)}">概念参考图</button>
+          </div>` : '<div class="mono muted" style="margin-top:4px">初步方案设计草图</div>'}
+      `;
+    }
 
     function esc(s) {
       return String(s ?? '')
@@ -339,6 +400,7 @@
             <div class="section-title">
               <h2>AI Research Board</h2>
               <button class="btn" data-action="rerun">重新运行 Agents</button>
+              <button class="btn" data-action="sketches">生成/刷新草图</button>
             </div>
             ${!r && (p.status === 'running' || p.status === 'draft') ? '<p class="muted">Agents 正在用 kimi-k3 分析（通常需要 1–3 分钟），请稍候，不要反复点击「重新运行」…</p>' : ''}
             ${r ? `
@@ -404,9 +466,12 @@
           <div class="section-title">
             <div>
               <h2>Concept Board</h2>
-              <p class="muted" style="margin:0">AI 只提供方向。请收藏、评分、改关键词，或合并两个方向。</p>
+              <p class="muted" style="margin:0">AI 只提供方向与初步草图。请收藏、评分、改关键词，或合并两个方向。</p>
             </div>
-            <span class="tag">Human Decision Layer</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn" data-action="sketches">生成/刷新草图</button>
+              <span class="tag">Human Decision Layer</span>
+            </div>
           </div>
           ${concepts.length === 0
             ? `<div class="grid-2"><div class="empty">概念尚未生成</div>${agentRail(p.agent_steps)}</div>`
@@ -420,13 +485,16 @@
                         <h3>${esc(c.concept_name)}</h3>
                         ${c.is_favorite ? '<span class="tag">已收藏</span>' : ''}
                       </div>
+                      ${sketchBlock(c)}
                       <p class="muted" style="margin:0">${esc(c.target_user)}</p>
                       <div class="keyword-row">${(c.design_keywords || []).map((k) => `<span class="keyword">${esc(k)}</span>`).join('')}</div>
+                      ${(c.cmf_colors || []).length ? `<div class="cmf-row">${c.cmf_colors.map((col) => `<span class="cmf-swatch" style="background:${esc(col)}" title="${esc(col)}"></span>`).join('')}</div>` : ''}
                       <div>
                         <strong>产品特征</strong>
                         <ul class="list-clean">${(c.product_features || []).map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
                       </div>
                       <p><strong>视觉方向：</strong>${esc(c.visual_direction)}</p>
+                      ${c.sketch_caption ? `<p class="muted"><strong>草图说明：</strong>${esc(c.sketch_caption)}</p>` : ''}
                       <p class="muted"><strong>商业价值：</strong>${esc(c.business_value)}</p>
                       <div class="field" style="margin-bottom:0">
                         <label>修改关键词</label>
@@ -596,6 +664,13 @@
     async function onAction(e) {
       const btn = e.currentTarget;
       const action = btn.dataset.action;
+      if (action === 'sketch-view') {
+        const frame = document.querySelector(`.sketch-frame[data-sketch-key="${btn.dataset.key}"] img`);
+        if (frame) frame.src = btn.dataset.src;
+        btn.parentElement.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        return;
+      }
       if (action === 'go-dashboard') {
         stopPoll();
         state.view = 'dashboard';
@@ -617,6 +692,14 @@
         await withBusy(async () => {
           state.project = await api.getProject(Number(btn.dataset.id));
           state.view = 'research';
+        });
+        return;
+      }
+      if (action === 'sketches') {
+        await withBusy(async () => {
+          state.error = '';
+          state.project = await api.generateSketches(state.project.id);
+          state.view = 'concepts';
         });
         return;
       }

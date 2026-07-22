@@ -12,6 +12,7 @@ from backend.agents.concept_agent import ConceptAgent
 from backend.agents.insight_agent import InsightAgent
 from backend.agents.requirement_agent import RequirementAgent
 from backend.agents.research_agent import ResearchAgent
+from backend.agents.sketch_agent import SketchAgent
 from backend.database.models import AgentStep, Concept, DecisionEvent, Project
 
 PIPELINE = [
@@ -19,6 +20,7 @@ PIPELINE = [
     ResearchAgent(),
     InsightAgent(),
     ConceptAgent(),
+    SketchAgent(),
 ]
 
 
@@ -84,7 +86,10 @@ async def run_research_pipeline(
     project.status = "running"
     db.commit()
 
-    context: dict[str, Any] = {"raw_input": project.raw_input}
+    context: dict[str, Any] = {
+        "raw_input": project.raw_input,
+        "project_id": project.id,
+    }
 
     for agent in PIPELINE:
         if not cont():
@@ -93,6 +98,9 @@ async def run_research_pipeline(
 
         _upsert_step(db, project.id, agent.name, "running", f"{agent.name} running...")
         try:
+            # Sketch agent needs concepts from previous step
+            if agent.name == "sketch":
+                context["concepts"] = {"concepts": context.get("concepts_list") or []}
             output = await agent.run(context)
         except Exception as exc:  # noqa: BLE001
             if not cont():
@@ -125,10 +133,13 @@ async def run_research_pipeline(
             project.insight_json = json.dumps(output, ensure_ascii=False)
             context["insight"] = output
         elif agent.name == "concept":
+            context["concepts_list"] = output.get("concepts", [])
             project.concepts_json = json.dumps(output, ensure_ascii=False)
-            # Replace concept rows
+        elif agent.name == "sketch":
+            concepts = output.get("concepts", [])
+            project.concepts_json = json.dumps({"concepts": concepts}, ensure_ascii=False)
             db.query(Concept).filter(Concept.project_id == project.id).delete()
-            for c in output.get("concepts", []):
+            for c in concepts:
                 db.add(
                     Concept(
                         project_id=project.id,

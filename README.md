@@ -43,6 +43,7 @@
 | Market Research | 趋势/竞品/痛点/机会 | market_trends, competitors, … |
 | User Insight | 用户画像 | persona JSON |
 | Concept Generation | 3 个可选方向 | concepts[] |
+| Concept Sketch | 初步方案草图 + 参考图 | sketch_svg / sketch_image_url |
 | Design Brief | 选中方向 → brief | design_goal, CMF, avoid, … |
 
 Human Decision Layer：收藏、评分、改关键词、合并方向、选择并确认最终 brief。AI **不会**自动 finalize。

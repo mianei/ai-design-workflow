@@ -39,10 +39,33 @@ app.include_router(projects_router)
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+SKETCH_MEDIA = ROOT_DIR / "database" / "sketches"
+SKETCH_MEDIA.mkdir(parents=True, exist_ok=True)
+app.mount("/media/sketches", StaticFiles(directory=str(SKETCH_MEDIA)), name="sketches")
+
 
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    # Recover zombie running jobs left by process restart
+    from backend.database.db import SessionLocal
+    from backend.database.models import AgentStep, Project
+
+    db = SessionLocal()
+    try:
+        stuck = db.query(Project).filter(Project.status == "running").all()
+        for project in stuck:
+            project.status = "draft"
+            for step in db.query(AgentStep).filter(
+                AgentStep.project_id == project.id, AgentStep.status == "running"
+            ):
+                step.status = "failed"
+                step.message = "Interrupted by server restart — click Re-run Agents"
+        if stuck:
+            db.commit()
+            print(f"[startup] recovered {len(stuck)} stuck running project(s)")
+    finally:
+        db.close()
 
 
 @app.get("/")

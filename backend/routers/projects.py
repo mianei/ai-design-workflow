@@ -156,6 +156,64 @@ async def rerun_pipeline(
     return {"ok": True, "status": "running", "forced": force}
 
 
+@router.post("/projects/{project_id}/sketches")
+async def generate_sketches(project_id: int, db: Session = Depends(get_db)):
+    """Generate / refresh preliminary sketches for existing concepts."""
+    from backend.agents.orchestrator import _log_decision, _upsert_step
+    from backend.agents.sketch_agent import SketchAgent
+
+    project = _get_project(db, project_id)
+    concepts = [
+        {**json.loads(c.concept_json), "id": c.concept_key}
+        for c in project.concepts
+    ]
+    if not concepts and project.concepts_json:
+        concepts = json.loads(project.concepts_json).get("concepts") or []
+    if not concepts:
+        raise HTTPException(status_code=400, detail="No concepts to sketch — run research pipeline first")
+
+    agent = SketchAgent()
+    _upsert_step(db, project.id, agent.name, "running", "Generating concept sketches...")
+    try:
+        output = await agent.run(
+            {
+                "project_id": project.id,
+                "requirement": json.loads(project.requirement_json or "{}"),
+                "concepts": {"concepts": concepts},
+            }
+        )
+    except Exception as exc:  # noqa: BLE001
+        _upsert_step(db, project.id, agent.name, "failed", str(exc))
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    sketched = output.get("concepts") or []
+    project.concepts_json = json.dumps({"concepts": sketched}, ensure_ascii=False)
+    db.query(Concept).filter(Concept.project_id == project.id).delete()
+    for c in sketched:
+        db.add(
+            Concept(
+                project_id=project.id,
+                concept_key=c["id"],
+                concept_json=json.dumps(c, ensure_ascii=False),
+            )
+        )
+    _upsert_step(db, project.id, agent.name, "completed", agent.display_message, output)
+    _log_decision(
+        db,
+        project.id,
+        "ai_generated",
+        "ai",
+        {"agent": "sketch", "message": agent.display_message},
+    )
+    project.updated_at = datetime.utcnow()
+    if project.status in {"concepts_ready", "brief_ready", "decided", "draft"}:
+        # keep status, but ensure concepts_ready if we only had draft after fail
+        if project.status == "draft":
+            project.status = "concepts_ready"
+    db.commit()
+    return serialize_project(_get_project(db, project.id))
+
+
 @router.patch("/projects/{project_id}/concepts/{concept_key}")
 def update_concept(
     project_id: int,

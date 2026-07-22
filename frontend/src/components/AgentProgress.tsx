@@ -1,12 +1,13 @@
 import type { AgentStep } from '../types';
 
-const ORDER = ['requirement', 'research', 'insight', 'concept', 'brief'] as const;
+const ORDER = ['requirement', 'research', 'insight', 'concept', 'sketch', 'brief'] as const;
 
 const LABELS: Record<string, string> = {
   requirement: 'Requirement analysis',
   research: 'Market research',
   insight: 'User insight',
   concept: 'Concept generation',
+  sketch: 'Concept sketches',
   brief: 'Design brief',
 };
 

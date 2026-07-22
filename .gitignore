@@ -5,9 +5,10 @@ __pycache__/
 .venv/
 venv/
 .env
-*.db
-backend/*.db
 database/*.db
+database/sketches/**
+!database/sketches/.gitkeep
+!database/.gitkeep
 
 # Node
 node_modules/

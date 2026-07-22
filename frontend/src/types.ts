@@ -51,6 +51,12 @@ export interface Concept {
   is_favorite: boolean;
   rating: number | null;
   merged_from?: string | null;
+  form_type?: string;
+  cmf_colors?: string[];
+  sketch_caption?: string;
+  sketch_prompt?: string;
+  sketch_svg?: string;
+  sketch_image_url?: string | null;
 }
 
 export interface Brief {

@@ -167,6 +167,19 @@ function ConceptCard({
         <h3>{concept.concept_name}</h3>
         {concept.is_favorite ? <span className="tag">已收藏</span> : null}
       </div>
+      {(concept.sketch_svg || concept.sketch_image_url) && (
+        <div className="sketch-frame">
+          <img
+            src={
+              concept.sketch_svg ||
+              (concept.sketch_image_url?.startsWith('http')
+                ? concept.sketch_image_url
+                : `http://127.0.0.1:8000${concept.sketch_image_url}`)
+            }
+            alt={`${concept.concept_name} sketch`}
+          />
+        </div>
+      )}
       <p className="muted" style={{ margin: 0 }}>
         {concept.target_user}
       </p>
@@ -177,6 +190,13 @@ function ConceptCard({
           </span>
         ))}
       </div>
+      {concept.cmf_colors?.length ? (
+        <div className="cmf-row">
+          {concept.cmf_colors.map((c) => (
+            <span key={c} className="cmf-swatch" style={{ background: c }} title={c} />
+          ))}
+        </div>
+      ) : null}
       <div>
         <strong>产品特征</strong>
         <ul className="list-clean">
@@ -189,6 +209,12 @@ function ConceptCard({
         <strong>视觉方向：</strong>
         {concept.visual_direction}
       </p>
+      {concept.sketch_caption ? (
+        <p className="muted">
+          <strong>草图说明：</strong>
+          {concept.sketch_caption}
+        </p>
+      ) : null}
       <p className="muted">
         <strong>商业价值：</strong>
         {concept.business_value}
